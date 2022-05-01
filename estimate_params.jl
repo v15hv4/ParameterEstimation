@@ -1,27 +1,24 @@
-using CSV
-using Plots
-using Statistics
-using DataFrames
-using DiffEqFlux
-using DifferentialEquations
+# using Pkg
+# Pkg.add("CSV")
+# Pkg.add("Plots")
+# Pkg.add("Statistics")
+# Pkg.add("DataFrames")
+# Pkg.add("DiffEqFlux")
+# Pkg.add("DifferentialEquations")
 
-# run GR backend as headless
-ENV["GKSwstype"] = "100"
+using CSV, Plots, Statistics, DataFrames, DiffEqFlux, DifferentialEquations
 
 # config
 DATASET_PATH = "measurements.csv"
-
-# use the GR backend for plots
-gr()
 
 # ode system
 function ode!(du, u, p, t)
     s = 0.5
     x, y = u
 
-    a2, b0, b2 = p
     a1 = 0.1
     b1 = 0.6
+    a2, b0, b2 = p
 
     du[1] = (b0 * s) - (a1 * x) - (b1 * y)
     du[2] = (b2 * x) - (a2 * y)
@@ -30,41 +27,35 @@ end
 # initial conditions
 u0 = [1.0, 0.0]
 
-# simulation interval & evaluation points
+# simulation interval and evaluation points
 tspan = (0.0, 50.0)
+tint = 1.0
 
-# initial parameters (b1 is fixed)
+# initial parameter values
 p = [0.0, 0.0, 0.0]
 
-# set up problem
+# set up ode problem
 problem = ODEProblem(ode!, u0, tspan, p)
-
-# # obtain solution
-# sol = solve(problem, Tsit5())
-# 
-# # plot solution
-# plot(sol)
-# savefig("estim_sol.png")
 
 # load dataset
 df = DataFrame(CSV.File(DATASET_PATH))
 
 # loss function
 function loss(p)
-    sol = solve(problem, Tsit5(), p=p, saveat=1.0)
-    loss = mean((sol[1,:] - df.x) .^ 2)
+    sol = solve(problem, Tsit5(), p=p, saveat=tint)
+    pred_x = sol[1, :]
+    actual_x = Array(df.x)
+    loss = mean((pred_x - actual_x) .^ 2)
     return loss, sol
 end
 
 # nn callback
 callback = function (p, l, pred)
-    println("loss: $l - parameters: $p")
-    plt = plot(pred, linewidth=2)
-    savefig("prediction.png")
-    # Tell sciml_train to not halt the optimization. If return true, then
-    # optimization stops.
+    display("loss: $l -- params: $p")
+    plt = plot(pred)
+    title!("a2: $(round.(p[1]; digits=3)), b0: $(round.(p[2]; digits=3)), b2: $(round.(p[3]; digits=3))")
+    display(plt)
     return false
 end
 
-# optimize
-result_ode = DiffEqFlux.sciml_train(loss, p, cb=callback, maxiters=100)
+result_ode = DiffEqFlux.sciml_train(loss, p, cb=callback)
