@@ -39,12 +39,12 @@ problem = ODEProblem(ode!, u0, tspan, p)
 
 # load dataset
 df = DataFrame(CSV.File(DATASET_PATH))
+actual_x = Array(df.x)
 
 # loss function
 function loss(p)
     sol = solve(problem, Tsit5(), p=p, saveat=tint)
     pred_x = sol[1, :]
-    actual_x = Array(df.x)
     loss = mean((pred_x - actual_x) .^ 2)
     return loss, sol
 end
@@ -59,3 +59,4 @@ callback = function (p, l, pred)
 end
 
 result_ode = DiffEqFlux.sciml_train(loss, p, cb=callback)
+savefig("estimation_results.png")
