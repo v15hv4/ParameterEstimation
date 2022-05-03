@@ -1,4 +1,4 @@
-using CSV, Catalyst, Plots, DataFrames, DifferentialEquations, Evolutionary, Statistics
+using CSV, Catalyst, Plots, Printf, DataFrames, DifferentialEquations, Evolutionary, Statistics
 
 # config
 MEASUREMENTS_PATH = "measurements.csv"
@@ -14,6 +14,16 @@ end α_1 α_2 β_0 β_2
 
 # timespan of experiment
 tspan = (0.0, 50.0)
+teval = (tspan[2] - tspan[1]) / 1000
+
+# nominal parameters
+nominal_parameters = [
+    0.1, # α_1
+    0.2, # α_2
+    0.2, # β_0
+    # 0.6, # β_1
+    0.6, # β_2
+]
 
 # initial conditions
 u0 = [
@@ -24,17 +34,18 @@ u0 = [
 
 # load measurements
 df = DataFrame(CSV.File(MEASUREMENTS_PATH))
-actual = Array(df.X)
+actual = Array(df.output)
 
 # objective function to optimize
 function objective(p)
     problem = ODEProblem(rn, u0, tspan, p)
-    sol = solve(problem, Tsit5(), saveat=1.0)
+    sol = solve(problem, Tsit5(), saveat=teval)
     preds = sol[1, :]
     mse = mean((preds - actual) .^ 2)
 
     plt = plot(sol, linewidth=2)
-    title!("mse: $mse")
+    mse_str = @sprintf("%.4E", mse)
+    title!("mse: $mse_str")
     display(plt)
 
     return mse
@@ -62,3 +73,4 @@ res = Evolutionary.optimize(objective, bounds, p0, alg, opts)
 # extract estimated parameters
 pe = round.(Evolutionary.minimizer(res); digits=3)
 println("Estimated parameters: $pe")
+println("Nominal parameters: $nominal_parameters")
