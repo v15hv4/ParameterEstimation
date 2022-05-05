@@ -6,10 +6,6 @@ using Wandb, Logging
 MEASUREMENTS_PATH = "measurements.csv"
 WANDB_PROJECT = "Evolutionary_ParameterEstimation"
 
-# wandb
-lg = WandbLogger(project=WANDB_PROJECT, name=nothing)
-global_logger(lg)
-
 # reaction network
 rn = @reaction_network begin
     α_1, X --> ∅
@@ -38,6 +34,10 @@ u0 = [
     :Y => 0.0,
     :S => 0.5,
 ]
+
+# wandb
+lg = WandbLogger(project=WANDB_PROJECT, name=nothing)
+global_logger(lg)
 
 # load measurements
 println("Loading dataset...")
