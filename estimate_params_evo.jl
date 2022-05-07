@@ -4,7 +4,7 @@ using Wandb, Logging
 
 # config
 MEASUREMENTS_PATH = "measurements.csv"
-WANDB_PROJECT = "Evolutionary_ParameterEstimation"
+WANDB_PROJECT = "EvolutionaryParameterEstimation"
 
 # reaction network
 rn = @reaction_network begin
@@ -120,6 +120,10 @@ ylabel!("activity")
 # log run results
 println("Logging results on WandB...")
 parameter_table = Wandb.wandb.Table(
+    data=[estimated_parameters],
+    columns=["α_1", "α_2", "β_0", "β_2"]
+)
+parameter_error_table = Wandb.wandb.Table(
     data=[estimated_parameters - nominal_parameters],
     columns=["α_1", "α_2", "β_0", "β_2"]
 )
@@ -127,9 +131,11 @@ Wandb.log(
     lg,
     Dict(
         "results/iters" => Evolutionary.iterations(res),
-        "results/parameter_error" => parameter_table,
         "results/fit" => Wandb.Image(plt),
+        "results/parameters" => parameter_table,
+        "results/parameter_error" => parameter_error_table,
         "results/parameter_mse" => mean((nominal_parameters - estimated_parameters) .^ 2),
+        "results/parameter_error_percentage" => mean((nominal_parameters - estimated_parameters) ./ nominal_parameters) * 100,
     )
 )
 
