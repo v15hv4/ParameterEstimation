@@ -1,4 +1,7 @@
-using Catalyst, DifferentialEquations, Evolutionary
+include("./NFBSystem.jl")
+import .NFBSystem as System
+
+using DifferentialEquations, Evolutionary
 using CSV, DataFrames, Plots, Printf, Statistics
 using Wandb, Logging
 
@@ -6,36 +9,8 @@ using Wandb, Logging
 MEASUREMENTS_PATH = "measurements.csv"
 WANDB_PROJECT = "EvolutionaryParameterEstimation"
 
-# reaction network
-rn = @reaction_network begin
-    α_1, X --> ∅
-    α_2, Y --> ∅
-    β_0 * S, ∅ --> X
-    -0.6 * Y, ∅ --> X
-    β_2 * X, ∅ --> Y
-end α_1 α_2 β_0 β_2
-
-# timespan of experiment
-tspan = (0.0, 50.0)
-teval = (tspan[2] - tspan[1]) / 1000
-
-# nominal parameters
-nominal_parameters = [
-    0.1, # α_1
-    0.2, # α_2
-    0.2, # β_0
-    # 0.6, # β_1
-    0.6, # β_2
-]
-
-# initial conditions
-u0 = [
-    :X => 1.0,
-    :Y => 0.0,
-    :S => 0.5,
-]
-
 # wandb
+println("Initializing WandB...")
 lg = WandbLogger(project=WANDB_PROJECT, name=nothing)
 global_logger(lg)
 
@@ -44,10 +19,22 @@ println("Loading dataset...")
 df = DataFrame(CSV.File(MEASUREMENTS_PATH))
 actual = Array(df.output)
 
+# subset of parameters to estimate
+target_params = [:α_1, :α_2, :β_0, :β_2]
+println("Target parameters: $target_params")
+
+# function to extract and order parameters
+function make_params(param_values)
+    param_dict = Dict(zip(target_params, param_values))
+    ordered_params = [get(param_dict, i, System.nominal_parameters[i]) for i in keys(System.nominal_parameters)]
+    return ordered_params
+end
+
 # objective function to optimize
 function objective(p)
-    problem = ODEProblem(rn, u0, tspan, p)
-    sol = solve(problem, Tsit5(), saveat=teval)
+    # define problem and solve
+    problem = ODEProblem(System.rn, System.u0, System.tspan, make_params(p))
+    sol = solve(problem, Tsit5(), saveat=System.teval)
     preds = sol[1, :]
     mse = mean((preds - actual) .^ 2)
 
@@ -69,11 +56,11 @@ function wandb_loss_cb(trace)
 end
 
 # initial parameters
-p0 = zeros(4)
+p0 = zeros(length(target_params))
 
 # parameter bounds
-lb = zeros(4)
-ub = ones(4)
+lb = zeros(length(target_params))
+ub = ones(length(target_params))
 bounds = BoxConstraints(lb, ub)
 
 # algorithm
@@ -99,12 +86,13 @@ res = Evolutionary.optimize(objective, bounds, p0, alg, opts)
 
 # extract estimated parameters
 estimated_parameters = round.(Evolutionary.minimizer(res); digits=3)
+nominal_parameters = [System.nominal_parameters[i] for i in target_params]
 println("Estimated parameters: $estimated_parameters")
 println("Nominal parameters: $nominal_parameters")
 
 # plot fit for logging
-problem = ODEProblem(rn, u0, tspan, estimated_parameters)
-sol = solve(problem, Tsit5(), saveat=teval)
+problem = ODEProblem(System.rn, System.u0, System.tspan, make_params(estimated_parameters))
+sol = solve(problem, Tsit5(), saveat=System.teval)
 sol_X = sol[1, :]
 sol_Y = sol[2, :]
 actual_X = Array(df.X)
@@ -121,11 +109,11 @@ ylabel!("activity")
 println("Logging results on WandB...")
 parameter_table = Wandb.wandb.Table(
     data=[estimated_parameters],
-    columns=["α_1", "α_2", "β_0", "β_2"]
+    columns=map(String, target_params)
 )
 parameter_error_table = Wandb.wandb.Table(
     data=[estimated_parameters - nominal_parameters],
-    columns=["α_1", "α_2", "β_0", "β_2"]
+    columns=map(String, target_params)
 )
 Wandb.log(
     lg,
